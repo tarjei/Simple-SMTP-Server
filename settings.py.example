@@ -1,0 +1,11 @@
+# rename to settings.py
+# smtp forwarding settings
+smtp_host='localhost'
+smtp_port=587
+user='someuser'
+passwd='password'
+
+# forwards relevant emails to the regexp address.
+regexpMatches = {
+  'you@example.com': re.compile('yourname.+')
+}
