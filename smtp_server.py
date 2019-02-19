@@ -8,29 +8,23 @@ import bottle
 import time
 import copy
 import email
+import datetime
+import smtplib
+import re
+import traceback
 
 from bottle import Bottle, route, run as bottlerun, static_file, install
 
 
-#############################################################
-################# Django template engine fn #################
-#############################################################
+from string import Template
 
-from django.conf import settings
-settings.configure(TEMPLATE_DIRS=("static",))
+def render(name, values):
 
-import django.template
-import django.template.loader
+	fh = open("static/%s" % (name), 'r')
+	content = fh.read()
+	fh.close()
 
-def render(name, *values):
-	ctx = django.template.Context()
-	for d in values:
-		ctx.push()
-		ctx.update(d)
-
-	t = django.template.loader.get_template(name)
-	# print dir(t)
-	return str(t.render(ctx))
+	return Template(content).substitute(values)
 
 #############################################################
 #######################    Pickle    ########################
@@ -66,22 +60,54 @@ class PickleData:
 messageStore = PickleData('messageStore.txt')
 messageQueue = []
 
+
+from settings import smtp_host, smtp_port, user, passwd, regexpMatches
+
+def sendSmtpMessage(message, from_addr, to_addr):
+	# open authenticated SMTP connection and send message with
+	# specified envelope from and to addresses
+	smtp = smtplib.SMTP(smtp_host, smtp_port)
+	smtp.starttls()
+	smtp.login(user, passwd)
+	smtp.sendmail(from_addr, to_addr, message.as_string())
+	smtp.quit()
+
 class SMTPServer(smtpd.SMTPServer):
 	def process_message(self,_peer,_from,_to,_data):
-		messagePacket = {
-			'from' : _from,
-			'to' : _to,
-			'data' : _data,
-			'time' : time.time()
-		}
-		messageQueue.append(messagePacket)
-		self.store_message(messagePacket)
+		try:
+			messagePacket = {
+				'from' : _from,
+				'to' : _to,
+				'data' : _data,
+				'time' : time.time()
+			}
+			messageQueue.append(messagePacket)
+			self.store_message(messagePacket)
 
-		print "#####################################################"
-		print 'Receiving from', _from
-		print 'Sending to', _to
-		print 'Peer', _peer
-		print 'Data', _data
+			print "#####################################################"
+			print 'Receiving from', _from
+			print 'Sending to', _to
+			print 'Peer', _peer
+			print 'Data', _data
+
+
+			# create a Message instance from the email data
+			message = email.message_from_string(_data)
+			#message = _data
+
+			print repr(_to)
+
+			for toAddress,regexp in regexpMatches.iteritems():
+				for to in _to:
+					if regexp.match(to):
+						# replace headers (could do other processing here)
+						message.replace_header("To", toAddress)
+						sendSmtpMessage(message, _from, toAddress)
+
+		except Exception as e:
+			print e.message
+			traceback.print_exc()
+			return
 
 	def store_message(self,messagePacket):
 		dump = messageStore.read()
@@ -116,7 +142,7 @@ class SMTPServerThread(threading.Thread,object):
 		print 'Closing SMTP Server'
 		self.active = False
 		# self.server.close()
-		
+
 	#@staticmethod
 	def setup(self):
 		print 'Starting SMTP Server'
@@ -188,9 +214,44 @@ def home(pageNum=1):
 			title += emsg.get_payload()
 
 		each['title'] = title[:40]
-		print each['title']
+		# print each['title']
 
-	return render("home.template.html",{ 'messages':messages, 'page':pageNum, 'host':host })
+
+
+
+	template ="""
+	<div class="msgRow $readClass" msgId='$id'>
+			<div class='fromField'>$from</div>
+			<div class='toField'>$to</div>
+			<div class='msgField'>$title</div>
+			<div class='timeField'>$date</div>
+		</div>
+	"""
+
+	if len(messages):
+
+		rep = []
+
+		for message in messages:
+
+			if hasattr( message,'read') and message.read:
+				message['readClass'] = 'msgRead'
+			else:
+				message['readClass'] = ''
+
+			message['date']= datetime.datetime.fromtimestamp(message['time']).isoformat()
+
+			rep.append((Template(template).substitute(message)))
+
+		messagesHtml = "\n".join(rep)
+
+	else:
+		messagesHtml = """<div class="msgRow msgRead txtCenter">
+			No messages
+		</div>"""
+
+
+	return render("home.template.html",{ 'messagesHtml':messagesHtml, 'page':pageNum, 'host':host })
 
 #############################################################
 ########################    MAIN    #########################

@@ -7,7 +7,6 @@ import threading
 import time
 import copy
 import email
-
 #############################################################
 #######################    Pickle    ########################
 #############################################################
@@ -92,7 +91,7 @@ class SMTPServerThread(threading.Thread,object):
 		print 'Closing SMTP Server'
 		self.active = False
 		# self.server.close()
-		
+
 	#@staticmethod
 	def setup(self):
 		print 'Starting SMTP Server'
