@@ -13,7 +13,7 @@ import smtplib
 import re
 import traceback
 
-from bottle import Bottle, route, run as bottlerun, static_file, install
+from bottle import Bottle, route, run as bottlerun, static_file, install, request
 
 
 from string import Template
@@ -188,6 +188,39 @@ def readMsg(id=-1):
 	except:
 		return json.dumps(False)
 
+@app.route('/sms/mtsms', method=['POST'])
+def saveSms():
+
+	postvars = request.json
+	print "SMS Vars: " + repr(postvars)
+
+	dump = messageStore.read()
+	if dump is None:
+		dump = {}
+	if not dump.has_key( 'smses' ):
+		dump['smses'] = []
+
+	postvars['id'] = len(dump['smses']) + 1
+	dump['smses'].append(postvars)
+	messageStore.save(dump)
+
+
+@app.route('/sms')
+def listSmsEs():
+	dump = messageStore.read()
+	if dump is None:
+		dump = {}
+	if not dump.has_key( 'smses' ):
+		dump['smses'] = []
+
+	return json.dumps(dump['smses'])
+
+
+@app.route("/clear-all")
+def clearAll():
+	messageStore.save({})
+
+
 
 @app.route('/page-<pageNum>')
 @app.route('/')
@@ -195,13 +228,14 @@ def home(pageNum=1):
 	content = messageStore.read()
 	messages = []
 
-	if content is None:
+	if content is None or not content.has_key('messages'):
 		messages = []
 	elif content.has_key('messages'):
 		messages = content['messages']
 
+
 	host = "%s:%s" % server.hostInfo
-	messages = copy.deepcopy(content['messages'])
+	messages = copy.deepcopy(messages)
 	messages.sort( lambda A, B: [-1,1][ A['time'] < B['time'] ] )
 
 	initialMessageCount = len(messages)
