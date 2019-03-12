@@ -201,6 +201,7 @@ def saveSms():
 		dump['smses'] = []
 
 	postvars['id'] = len(dump['smses']) + 1
+	postvars['time'] = time.time()
 	dump['smses'].append(postvars)
 	messageStore.save(dump)
 
@@ -214,6 +215,63 @@ def listSmsEs():
 		dump['smses'] = []
 
 	return json.dumps(dump['smses'])
+
+@app.route('/smses')
+def listSmsHtml(pageNum=1):
+	content = messageStore.read()
+	messages = []
+
+	if content is None or not content.has_key('smses'):
+		messages = []
+	elif content.has_key('smses'):
+		messages = content['smses']
+
+	host = "%s:%s" % server.hostInfo
+	messages = copy.deepcopy(messages)
+	# messages.sort( lambda A, B: [-1,1][ A['time'] < B['time'] ] )
+
+	initialMessageCount = len(messages)
+	for each in messages:
+
+		each['to'] = each['recipients'][0]['msisdn']
+		each['from'] = each['sender']
+		each['title'] = each['message']
+		if not 'time' in each:
+			each['time'] = 0
+
+	template ="""
+	<div class="msgRow $readClass" msgId='$id'>
+			<div class='fromField'>$from</div>
+			<div class='toField'>$to</div>
+			<div class='msgField'>$title</div>
+			<div class='timeField'>$date</div>
+		</div>
+	"""
+
+	if len(messages):
+
+		rep = []
+
+		for message in messages:
+
+			if hasattr( message,'read') and message.read:
+				message['readClass'] = 'msgRead'
+			else:
+				message['readClass'] = ''
+
+			message['date']= datetime.datetime.fromtimestamp(message['time']).isoformat()
+
+			rep.append((Template(template).substitute(message)))
+
+		messagesHtml = "\n".join(rep)
+
+	else:
+		messagesHtml = """<div class="msgRow msgRead txtCenter">
+			No messages
+		</div>"""
+
+	return render("home.template.html",{ 'messagesHtml':messagesHtml, 'page':pageNum, 'host':host })
+
 
 
 @app.route("/clear-all")

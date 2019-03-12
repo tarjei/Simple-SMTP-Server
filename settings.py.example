@@ -1,3 +1,4 @@
+import re
 # rename to settings.py
 # smtp forwarding settings
 smtp_host='localhost'
